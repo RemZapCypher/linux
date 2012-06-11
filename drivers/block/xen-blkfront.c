@@ -2319,6 +2319,7 @@ static void blkfront_connect(struct blkfront_info *info)
 	unsigned long long sectors;
 	int err, i;
 	struct blkfront_ring_info *rinfo;
+	int removable;
 
 	switch (info->connected) {
 	case BLKIF_STATE_CONNECTED:
@@ -2382,6 +2383,12 @@ static void blkfront_connect(struct blkfront_info *info)
 			break;
 		}
 	}
+
+	err = xenbus_gather(XBT_NIL, info->xbdev->otherend,
+			    "removable", "%d", &removable,
+			    NULL);
+	if (!err && removable)
+		info->vdisk_info |= VDISK_REMOVABLE;
 
 	err = xlvbd_alloc_gendisk(sectors, info);
 	if (err) {
