@@ -53,7 +53,7 @@ struct xen_pci_op {
 	/* IN: what action to perform: XEN_PCI_OP_* */
 	uint32_t cmd;
 
-	/* OUT: will contain an error number (if any) from errno.h */
+	/* OUT: will contain an XEN_PCI_ERR_* number. */
 	int32_t err;
 
 	/* IN: which device to touch */
@@ -65,7 +65,9 @@ struct xen_pci_op {
 	int32_t offset;
 	int32_t size;
 
-	/* IN/OUT: Contains the result after a READ or the value to WRITE */
+	/* IN/OUT: Contains the result after a READ or the value to WRITE.
+	 * If the err does not have XEN_PCI_ERR_success, depending on
+	 * XEN_PCI_OP_* might have the errno value. */
 	uint32_t value;
 	/* IN: Contains extra infor for this operation */
 	uint32_t info;

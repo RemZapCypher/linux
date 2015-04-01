@@ -290,7 +290,7 @@ static int pci_frontend_enable_msix(struct pci_dev *dev,
 	} else {
 		pci_err(dev, "enable msix get err %x\n", err);
 	}
-	return err;
+	return err ? -EINVAL : 0;
 }
 
 static void pci_frontend_disable_msix(struct pci_dev *dev)

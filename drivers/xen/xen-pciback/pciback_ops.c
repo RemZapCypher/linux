@@ -249,7 +249,7 @@ int xen_pcibk_enable_msix(struct xen_pcibk_device *pdev,
 	if (dev_data)
 		dev_data->ack_intr = 0;
 
-	return result > 0 ? 0 : result;
+	return result >= 0 ? 0 : XEN_PCI_ERR_op_failed;
 }
 
 static
