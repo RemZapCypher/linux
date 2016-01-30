@@ -873,7 +873,7 @@ static unsigned int __startup_pirq(struct irq_info *info)
 					BIND_PIRQ__WILL_SHARE : 0;
 	rc = HYPERVISOR_event_channel_op(EVTCHNOP_bind_pirq, &bind_pirq);
 	if (rc != 0) {
-		pr_warn("Failed to obtain physical IRQ %d\n", info->irq);
+		pr_warn("Failed to obtain physical IRQ %d (error %d)\n", info->irq, rc);
 		return 0;
 	}
 	evtchn = bind_pirq.port;
