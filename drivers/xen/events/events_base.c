@@ -2172,6 +2172,10 @@ static struct irq_chip xen_pirq_chip __read_mostly = {
 	.irq_set_affinity	= set_affinity_irq,
 
 	.irq_retrigger		= retrigger_dynirq,
+
+	.flags                  = IRQCHIP_SKIP_SET_WAKE |
+				  IRQCHIP_ENABLE_WAKEUP_ON_SUSPEND |
+				  IRQCHIP_MASK_ON_SUSPEND,
 };
 
 static struct irq_chip xen_percpu_chip __read_mostly = {
