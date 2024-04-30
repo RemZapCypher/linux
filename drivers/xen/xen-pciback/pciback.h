@@ -49,6 +49,8 @@ struct xen_pcibk_dev_data {
 	struct pci_saved_state *pci_saved_state;
 	unsigned int permissive:1;
 	unsigned int allow_interrupt_control:1;
+	unsigned int pm_suspend:1;
+	unsigned int pm_suspend_force:1;
 	unsigned int warned_on_write:1;
 	unsigned int enable_intx:1;
 	unsigned int isr_on:1; /* Whether the IRQ handler is installed. */

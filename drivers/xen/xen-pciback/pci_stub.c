@@ -29,6 +29,7 @@
 #include "pciback.h"
 #include "conf_space.h"
 #include "conf_space_quirks.h"
+#include "../../pci/pci.h"
 
 #define PCISTUB_DRIVER_NAME "pciback"
 
@@ -1041,12 +1042,47 @@ end:
 	return;
 }
 
+static int xen_pcibk_suspend_noirq(struct device *dev) {
+	// Imitate pci_pm_suspend_noirq but with per-device opt-in and force
+	// option.
+	struct pci_dev *pci_dev = to_pci_dev(dev);
+	struct xen_pcibk_dev_data *dev_data = pci_get_drvdata(pci_dev);
+
+	pci_save_state(pci_dev);
+
+	if (dev_data->pm_suspend) {
+		if (pci_dev->skip_bus_pm || !pci_power_manageable(pci_dev)) {
+			if (!dev_data->pm_suspend_force) {
+				pci_info(pci_dev, "Skipping device suspend\n");
+				return 0;
+			} else {
+				pci_info(pci_dev, "Forcing device suspend\n");
+			}
+		}
+		int err = pci_prepare_to_sleep(pci_dev);
+		if (err) {
+			pci_err(pci_dev, "Suspending device failed: %i\n", err);
+		} else {
+			pci_info(pci_dev, "Device suspended. It's now in %s\n",
+				 pci_power_name(pci_dev->current_state));
+		}
+	} else {
+		pci_info(pci_dev, "Backend-side device suspend not enabled\n");
+	}
+
+	return 0;
+}
+
 /*add xen_pcibk AER handling*/
 static const struct pci_error_handlers xen_pcibk_error_handler = {
 	.error_detected = xen_pcibk_error_detected,
 	.mmio_enabled = xen_pcibk_mmio_enabled,
 	.slot_reset = xen_pcibk_slot_reset,
 	.resume = xen_pcibk_error_resume,
+};
+
+static const struct dev_pm_ops xen_pcibk_pm_ops = {
+	.suspend_noirq = xen_pcibk_suspend_noirq,
 };
 
 /*
@@ -1062,6 +1098,7 @@ static struct pci_driver xen_pcibk_pci_driver = {
 	.probe = pcistub_probe,
 	.remove = pcistub_remove,
 	.err_handler = &xen_pcibk_error_handler,
+	.driver.pm = &xen_pcibk_pm_ops,
 };
 
 static inline int str_to_slot(const char *buf, int *domain, int *bus,
@@ -1549,6 +1586,124 @@ static ssize_t allow_interrupt_control_show(struct device_driver *drv,
 }
 static DRIVER_ATTR_RW(allow_interrupt_control);
 
+static ssize_t qubes_exp_pm_suspend_store(struct device_driver *drv,
+					     const char *buf, size_t count)
+{
+	int domain, bus, slot, func;
+	int err;
+	struct pcistub_device *psdev;
+	struct xen_pcibk_dev_data *dev_data;
+
+	err = str_to_slot(buf, &domain, &bus, &slot, &func);
+	if (err)
+		goto out;
+
+	psdev = pcistub_device_find(domain, bus, slot, func);
+	if (!psdev) {
+		err = -ENODEV;
+		goto out;
+	}
+
+	dev_data = pci_get_drvdata(psdev->dev);
+	/* the driver data for a device should never be null at this point */
+	if (!dev_data) {
+		err = -ENXIO;
+		goto release;
+	}
+	dev_data->pm_suspend = 1;
+release:
+	pcistub_device_put(psdev);
+out:
+	if (!err)
+		err = count;
+	return err;
+}
+
+static ssize_t qubes_exp_pm_suspend_show(struct device_driver *drv,
+					    char *buf)
+{
+	struct pcistub_device *psdev;
+	struct xen_pcibk_dev_data *dev_data;
+	size_t count = 0;
+	unsigned long flags;
+
+	spin_lock_irqsave(&pcistub_devices_lock, flags);
+	list_for_each_entry(psdev, &pcistub_devices, dev_list) {
+		if (count >= PAGE_SIZE)
+			break;
+		if (!psdev->dev)
+			continue;
+		dev_data = pci_get_drvdata(psdev->dev);
+		if (!dev_data || !dev_data->pm_suspend)
+			continue;
+		count +=
+		    scnprintf(buf + count, PAGE_SIZE - count, "%s\n",
+			      pci_name(psdev->dev));
+	}
+	spin_unlock_irqrestore(&pcistub_devices_lock, flags);
+	return count;
+}
+static DRIVER_ATTR_RW(qubes_exp_pm_suspend);
+
+static ssize_t qubes_exp_pm_suspend_force_store(struct device_driver *drv,
+					     const char *buf, size_t count)
+{
+	int domain, bus, slot, func;
+	int err;
+	struct pcistub_device *psdev;
+	struct xen_pcibk_dev_data *dev_data;
+
+	err = str_to_slot(buf, &domain, &bus, &slot, &func);
+	if (err)
+		goto out;
+
+	psdev = pcistub_device_find(domain, bus, slot, func);
+	if (!psdev) {
+		err = -ENODEV;
+		goto out;
+	}
+
+	dev_data = pci_get_drvdata(psdev->dev);
+	/* the driver data for a device should never be null at this point */
+	if (!dev_data) {
+		err = -ENXIO;
+		goto release;
+	}
+	dev_data->pm_suspend_force = 1;
+release:
+	pcistub_device_put(psdev);
+out:
+	if (!err)
+		err = count;
+	return err;
+}
+
+static ssize_t qubes_exp_pm_suspend_force_show(struct device_driver *drv,
+					    char *buf)
+{
+	struct pcistub_device *psdev;
+	struct xen_pcibk_dev_data *dev_data;
+	size_t count = 0;
+	unsigned long flags;
+
+	spin_lock_irqsave(&pcistub_devices_lock, flags);
+	list_for_each_entry(psdev, &pcistub_devices, dev_list) {
+		if (count >= PAGE_SIZE)
+			break;
+		if (!psdev->dev)
+			continue;
+		dev_data = pci_get_drvdata(psdev->dev);
+		if (!dev_data || !dev_data->pm_suspend_force)
+			continue;
+		count +=
+		    scnprintf(buf + count, PAGE_SIZE - count, "%s\n",
+			      pci_name(psdev->dev));
+	}
+	spin_unlock_irqrestore(&pcistub_devices_lock, flags);
+	return count;
+}
+static DRIVER_ATTR_RW(qubes_exp_pm_suspend_force);
+
 static void pcistub_exit(void)
 {
 	driver_remove_file(&xen_pcibk_pci_driver.driver, &driver_attr_new_slot);
@@ -1560,6 +1715,10 @@ static void pcistub_exit(void)
 			   &driver_attr_permissive);
 	driver_remove_file(&xen_pcibk_pci_driver.driver,
 			   &driver_attr_allow_interrupt_control);
+	driver_remove_file(&xen_pcibk_pci_driver.driver,
+			   &driver_attr_qubes_exp_pm_suspend);
+	driver_remove_file(&xen_pcibk_pci_driver.driver,
+			   &driver_attr_qubes_exp_pm_suspend_force);
 	driver_remove_file(&xen_pcibk_pci_driver.driver,
 			   &driver_attr_irq_handlers);
 	driver_remove_file(&xen_pcibk_pci_driver.driver,
@@ -1653,6 +1812,12 @@ static int __init pcistub_init(void)
 	if (!err)
 		err = driver_create_file(&xen_pcibk_pci_driver.driver,
 					 &driver_attr_allow_interrupt_control);
+	if (!err)
+		err = driver_create_file(&xen_pcibk_pci_driver.driver,
+					 &driver_attr_qubes_exp_pm_suspend);
+	if (!err)
+		err = driver_create_file(&xen_pcibk_pci_driver.driver,
+					 &driver_attr_qubes_exp_pm_suspend_force);
 
 	if (!err)
 		err = driver_create_file(&xen_pcibk_pci_driver.driver,
