@@ -98,8 +98,13 @@ static void xenbus_frontend_delayed_resume(struct work_struct *w)
 	xenbus_dev_resume(&xdev->dev);
 }
 
+extern bool __read_mostly xen_use_suspend;
+
 static int xenbus_frontend_dev_resume(struct device *dev)
 {
+	if (xen_use_suspend)
+		return xenbus_dev_cancel(dev);
+
 	/*
 	 * If xenstored is running in this domain, we cannot access the backend
 	 * state at the moment, so we need to defer xenbus_dev_resume

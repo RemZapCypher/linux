@@ -46,6 +46,9 @@ struct suspend_info {
 
 static RAW_NOTIFIER_HEAD(xen_resume_notifier);
 
+bool __read_mostly xen_use_suspend;
+core_param(qubes_exp_pm_use_suspend, xen_use_suspend, bool, 0);
+
 void xen_resume_notifier_register(struct notifier_block *nb)
 {
 	raw_notifier_chain_register(&xen_resume_notifier, nb);
@@ -113,7 +116,10 @@ static void do_suspend(void)
 		goto out_thaw;
 	}
 
-	err = dpm_suspend_start(PMSG_FREEZE);
+	pr_info("Using %s for sleep/wakeup\n",
+		xen_use_suspend ? "suspend/resume" :"freeze/restore/thaw");
+
+	err = dpm_suspend_start(xen_use_suspend ? PMSG_SUSPEND : PMSG_FREEZE);
 	if (err) {
 		pr_err("%s: dpm_suspend_start %d\n", __func__, err);
 		goto out_resume_end;
@@ -122,7 +128,7 @@ static void do_suspend(void)
 	printk(KERN_DEBUG "suspending xenstore...\n");
 	xs_suspend();
 
-	err = dpm_suspend_end(PMSG_FREEZE);
+	err = dpm_suspend_end(xen_use_suspend ? PMSG_SUSPEND : PMSG_FREEZE);
 	if (err) {
 		pr_err("dpm_suspend_end failed: %d\n", err);
 		si.cancelled = 0;
@@ -143,7 +149,7 @@ static void do_suspend(void)
 
 	xen_arch_resume();
 
-	dpm_resume_start(si.cancelled ? PMSG_THAW : PMSG_RESTORE);
+	dpm_resume_start(xen_use_suspend ? PMSG_RESUME : (si.cancelled ? PMSG_THAW : PMSG_RESTORE));
 
 	if (err) {
 		pr_err("failed to start xen_suspend: %d\n", err);
@@ -157,7 +163,7 @@ out_resume:
 		xs_suspend_cancel();
 
 out_resume_end:
-	dpm_resume_end(si.cancelled ? PMSG_THAW : PMSG_RESTORE);
+	dpm_resume_end(xen_use_suspend ? PMSG_RESUME : (si.cancelled ? PMSG_THAW : PMSG_RESTORE));
 
 out_thaw:
 	thaw_processes();
