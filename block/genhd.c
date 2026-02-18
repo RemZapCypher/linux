@@ -35,6 +35,14 @@
 
 static struct kobject *block_depr;
 
+#undef MODULE_PARAM_PREFIX
+#define MODULE_PARAM_PREFIX     "block."
+
+/* partition scanning policy */
+static bool disk_no_part_scan = 0;
+module_param_named(no_part_scan, disk_no_part_scan, bool, S_IRUGO|S_IWUSR);
+MODULE_PARM_DESC(no_part_scan, "When adding block devices, always mark them as not to be scanned for partitions");
+
 /*
  * Unique, monotonically increasing sequential number associated with block
  * devices instances (i.e. incremented each time a device is attached).
@@ -413,6 +421,9 @@ int __must_check device_add_disk(struct device *parent, struct gendisk *disk,
 	/* Mark bdev as having a submit_bio, if needed */
 	if (disk->fops->submit_bio)
 		bdev_set_flag(disk->part0, BD_HAS_SUBMIT_BIO);
+
+	if (disk_no_part_scan)
+		disk->flags |= GENHD_FL_NO_PART;
 
 	/*
 	 * If the driver provides an explicit major number it also must provide
