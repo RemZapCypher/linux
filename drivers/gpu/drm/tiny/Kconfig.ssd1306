@@ -1,0 +1,13 @@
+config DRM_SSD1306
+	tristate "Solomon SSD1306 OLED panel"
+	depends on DRM && SPI
+	select DRM_CLIENT_SELECTION
+	select DRM_KMS_HELPER
+	select DRM_GEM_DMA_HELPER
+	select DRM_MIPI_DBI
+	select DRM_FBDEV_DMA_HELPER
+	select DRM_GEM_SHMEM_HELPER
+	select BACKLIGHT_CLASS_DEVICE
+	help
+	  DRM driver for Solomon SSD1306 OLED panels.
+	  Uses firmware file solomon,ssd1306.bin for init sequence.
